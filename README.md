@@ -34,8 +34,7 @@ Dataset details will be released upon publication.
 
 ## Pre-trained model
 
-## Acknowledgment
-The authors would like to acknowledge the assistance from the KAUST Facilities and KAUST Supercomputing Laboratory (KSL) for making the training possible.
+Pretrained model details will be released upon publication.
 
 ## Training and testing
 ### running
@@ -54,3 +53,7 @@ The authors would like to acknowledge the assistance from the KAUST Facilities a
 `--test_list`: path of testing dataset list  
 `--lstm_path`: path of quantile model  
 `--gan_path`: path of CGAN model  
+
+## Acknowledgment
+The authors would like to acknowledge the assistance from the KAUST Facilities and KAUST Supercomputing Laboratory (KSL) for making the training possible.
+
