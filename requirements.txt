@@ -1,0 +1,5 @@
+kornia
+pandas-bokeh
+jupyterlab-theme-solarized-dark
+numpy-quaternion
+

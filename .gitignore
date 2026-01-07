@@ -1,0 +1,8 @@
+/env
+/data
+/dcgm
+.ipynb_checkpoints
+/bin/launch-jupyter-server-*-slurm.err
+/bin/launch-jupyter-server-*-slurm.out
+/bin/create-conda-env-*-slurm.out
+/bin/create-conda-env-*-slurm.err

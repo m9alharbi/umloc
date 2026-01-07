@@ -1,0 +1,49 @@
+name: localization_env
+
+channels:
+  - conda-forge
+  - defaults
+  - nvidia
+  - pytorch
+
+dependencies:
+  - bokeh
+  - captum
+  - cudatoolkit=11.8
+  - datashader
+  - h5py
+  - gh
+  - git
+  - holoviews
+  - hvplot
+  - ipywidgets
+  - jupyterlab
+  - jupyterlab-git
+  - jupyterlab-nvdashboard
+  - jupyterlab-lsp
+  - matplotlib
+  - numba
+  - numpy
+  - optuna
+  - pandas
+  - panel
+  - pip
+  - pip:
+    - -r requirements.txt
+  - pyarrow
+  - python=3.9
+  - python-language-server
+  - pytorch=2.2
+  - pytorch-lightning
+  - pytorch-cuda=11.8
+  - pyviz_comms
+  - scikit-learn
+  - scipy
+  - tensorboard
+  - torchaudio
+  - torchmetrics
+  - torchtext
+  - torchvision
+  - wandb
+  - xeus-python
+
