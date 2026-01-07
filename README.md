@@ -32,6 +32,7 @@ Experiments are conducted using:
 
 Dataset details will be released upon publication.
 
+The Android application and ZED2i code for data collection along with processing codes will be available upon publication.
 ## Pre-trained model
 
 Pretrained model details will be released upon publication.
