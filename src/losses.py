@@ -3,7 +3,6 @@ import random
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
 import numpy as np
-#TODO: evaluation metric (ATE, RTE)
 
 def pinball_loss(targ, pred, q):
     error = targ - pred

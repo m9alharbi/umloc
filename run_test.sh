@@ -1,4 +1,4 @@
-python src_1/main.py \
+python src/main.py \
     --dataset_directory /datasets/umgloc_dataset \
 	--output_directory \results \
      --use_map \

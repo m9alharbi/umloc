@@ -17,14 +17,6 @@ from data_utils import *
 from losses import *
 from models import *
 from copy import deepcopy
-# Set seeds for reproducibility
-# random.seed(42)
-# np.random.seed(42)
-# torch.manual_seed(42)
-# torch.cuda.manual_seed(42)
-# torch.cuda.manual_seed_all(42)
-# torch.backends.cudnn.deterministic = True
-# torch.backends.cudnn.benchmark = False
 
 G_UPDATES_TARGET = 50000
 TOTAL_ITERATIONS   = G_UPDATES_TARGET                 # because g_steps = 1
@@ -68,31 +60,6 @@ def current_phase(t):
     elif t < c:       return 2               # curriculum
     else:             return 3               # fine-tune
 
-# def get_loss_weights(t):
-#     phase = current_phase(t)
-#     # default values
-#     traj_w = SUP_START + (SUP_END - SUP_START) * (min(1, (t/PHASES["cum_boundaries"][1])))
-#     # traj_w, feas_w, adv = 5.0, 0.0, True
-#     if phase == 0:                     # only TrajLoss
-#         # adv = False
-#         adv_w, feas_w = 0.0, 0.0
-#         status = "warm-up"
-#     elif phase == 1:                   # Traj + GAN
-#         status = "curriculm training"
-#         adv_w = ADV_TARGET * ((t - PHASES["cum_boundaries"][0]) / PHASES["curriculum_iters"])
-#         feas_w = TARGET_FEAS_W * min(1, ((t - PHASES["cum_boundaries"][0]) / (PHASES["curriculum_iters"] * 0.8)))
-#     else: #phase == 2:                   # ramp feasibility
-#         status = "fine tunning"
-#         adv_w = ADV_TARGET * ADV_FT
-#         feas_w = TARGET_FEAS_W 
-#         # rel = (t - PHASES["cum_boundaries"][1]) / PHASES["curriculum_iters"]
-#         # feas_w = TARGET_FEAS_W * rel   # linear ramp
-#     # else:                              # Phase-3: joint fine-tune
-#     #     status = "fine_tunning"
-#     #     feas_w = TARGET_FEAS_W
-
-#     # print(f' iteration: {t} | Phase [{status}] | feasiblity weight: {feas_w:.4f} | trajectory weight: {traj_w:.4f}')
-#     return traj_w, feas_w, adv_w, phase
 
 def get_loss_weights(t):
     phase = current_phase(t)
@@ -201,51 +168,6 @@ def trainQmodel(args, train_loader, val_loader, log_file, Qtraining_epochs, loss
         print('Early terminate')
     return model_path
 
-# def discriminator_step(batch, generator, discriminator, loss_fns, optimizer_d, Q_model, dts, target_type, t):
-#     feat, targ, init_pos, traj_real, map_tensor, map_meta = batch
-#     feat, targ, init_pos, traj_real, map_tensor = map(lambda x: x.to(DEVICE),
-#                                            (feat, targ, init_pos, traj_real, map_tensor))
-#     losses = {}
-#     gp_w   = 20.0
-#     optimizer_d.zero_grad()
-#     # 1. generate fake trajectories
-#     def add_noise(x, std=0.02, max_iter=3000, i=0):
-#         if i < max_iter:
-#             return x + torch.randn_like(x) * std * (1 - i / max_iter)
-#         return x
-
-#     with torch.no_grad():
-#         pred_traj_fake_rel, _, _ = generator(map_tensor, init_pos, Q_model,
-#                                    feat, map_meta, t)
-
-#     # 2. critic forward
-#     scores_real = discriminator(add_noise(targ, i=t))
-#     scores_fake = discriminator(add_noise(pred_traj_fake_rel.detach(), i=t))
-    
-#     # 3. Wasserstein loss + gradient penalty
-#     d_loss = loss_fns['GAN_discrimentator_loss'](scores_real, scores_fake)
-#     gp = gradient_penalty(discriminator, targ, pred_traj_fake_rel.detach())
-#     d_total = d_loss + gp_w * gp
-#     losses['d_loss'] = d_loss.item()
-#     losses['GP'] = gp_w * gp.item()
-#     w_dist = scores_real.mean() - scores_fake.mean()
-#     losses['w_dist'] = w_dist.item()
-#     d_total.backward()
-#     optimizer_d.step()
-
-#     if t % 200 == 0:
-#         print(f"[{t:05d}]  W={w_dist:+.3f}  GP={losses['GP']:4.2f}  "
-#               f"μr={scores_real.mean():+.3f}  μf={scores_fake.mean():+.3f}")
-
-#     if t % 200 == 0:            # every 200 steps
-#         with torch.no_grad():
-#             # pick first weight tensor that requires_grad
-#             for name, p in discriminator.named_parameters():
-#                 if p.grad is not None:
-#                     print(f"[{t:05d}] D grad ‖{name}‖ = {p.grad.abs().mean():.4e}")
-#                     break
-    
-#     return losses
     
 def discriminator_step(batch, generator, discriminator, loss_fns, optimizer_d, Q_model, dts, target_type, t):
     losses = {}
@@ -258,57 +180,23 @@ def discriminator_step(batch, generator, discriminator, loss_fns, optimizer_d, Q
     optimizer_d.zero_grad()
     pred_traj_fake_rel, _, _, quantiles, imu_feat = generator(map_tensor, initial_pos, Q_model, feat, map_meta, t)
     pred_traj_fake = relative_to_abs(pred_traj_fake_rel, initial_pos, dts, target_type)
-
-    # def add_noise(x, std=0.02, max_iter=1000, i=0):
-    #     if i < max_iter:
-    #         return x + torch.randn_like(x) * std * (1 - i / max_iter)
-    #     return x
     
     scores_fake = discriminator(pred_traj_fake_rel.detach(), quantiles, map_tensor)# imu_feat)
     scores_real = discriminator(targ, quantiles, map_tensor)#, imu_feat)
-    # scores_fake = discriminator(pred_traj_fake_rel.detach())
-    # scores_real = discriminator(targ)
-
     data_loss = loss_fns['GAN_discrimentator_loss'](scores_real, scores_fake)
     data_loss.backward()
-    # if args.clipping_threshold_g > 0:
-    #     nn.utils.clip_grad_norm_(
-    #         generator.parameters(), args.clipping_threshold_g
-    #     )
-
-    # if t % 256 == 0:            # every 200 steps
-    #     with torch.no_grad():
-    #         # pick first weight tensor that requires_grad
-    #         for name, p in discriminator.named_parameters():
-    #             if p.grad is not None:
-    #                 print(f"[{t:05d}] D grad ‖{name}‖ = {p.grad.abs().mean():.4e}")
-    #                 break
                 
     optimizer_d.step()
     losses['d_loss'] = data_loss.item()
-
-    # if t % 256 == 0:
-    #     print(f"[{t:05d}] "
-    #           f"D(real)={scores_real.sigmoid().mean():.3f} "
-    #           f"D(fake)={scores_fake.sigmoid().mean():.3f} "
-    #           f"G_adv={data_loss.item():.3f}")
-        # print(scores_fake.min().item(), scores_fake.max().item())   # should show both + and – values
-        # print(scores_real.min().item(), scores_real.max().item())   # should show both + and – values
-
-
     return losses
 
 def generator_step(batch, generator, discriminator, loss_fns, optimizer_g, Q_model, dts, target_type, t, use_map=True):
 
     losses = {}
-    # traj_w, aux_w, feas_w = 5, 100.0, 0.5
     traj_w, feas_w, adv_w, phase = get_loss_weights(t)
-    # traj_w = min(5.0, 5.0 * t / 2000)
-    # feas_w = min(0.5, 0.5 * t / 2000)         # reaches 0.5 after 2 k iters
 
     loss = torch.zeros(1, device=DEVICE)
     feat, targ, initial_pos, traj_real, map_tensor, map_meta, ts = batch
-    # dts = (ts[:,1:] - ts[:,:-1]).to(DEVICE)
     feat, targ, initial_pos, traj_real, map_tensor = feat.to(DEVICE), targ.to(DEVICE), initial_pos.to(DEVICE), traj_real.to(DEVICE), map_tensor.to(DEVICE)
 
     optimizer_g.zero_grad()
@@ -333,12 +221,8 @@ def generator_step(batch, generator, discriminator, loss_fns, optimizer_g, Q_mod
         feas_loss = torch.tensor(0.0, device=DEVICE)
 
     
-    # scores_fake = discriminator(pred_traj_fake_rel)
-    # discriminator_loss = loss_fns['GAN_generator_loss'](scores_fake)
-    # feas_loss = loss_fns['GAN_generator_feasibility_loss'](pred_traj_fake_rel, map_tensor, map_meta)
     
 
-    # loss = feas_w * feas_loss + traj_w * g_l2_loss + discriminator_loss
     losses['G_feas_loss'] = (feas_w * feas_loss).item()
     losses['G_l2_loss_rel'] = (traj_w*g_l2_loss).item()
     losses['G_discriminator_loss'] = discriminator_loss.item()
@@ -346,18 +230,8 @@ def generator_step(batch, generator, discriminator, loss_fns, optimizer_g, Q_mod
     losses['G_total_loss'] = loss.item()
 
     loss.backward()
-    # nn.utils.clip_grad_norm_(generator.parameters(), 5.0)
-
-    # if t % 256 == 0:            # every 200 steps
-    #     with torch.no_grad():
-    #         # pick first weight tensor that requires_grad
-    #         for name, p in generator.named_parameters():
-    #             if p.grad is not None:
-    #                 print(f"[{t:05d}] G grad ‖{name}‖ = {p.grad.abs().mean():.4e}")
-    #                 break
                     
     optimizer_g.step()
-    # ema.update(generator)
     return losses
 
 def check_accuracy(loader, generator, discriminator, metric_fn, Q_model, dts, target_type, t):
@@ -374,14 +248,11 @@ def check_accuracy(loader, generator, discriminator, metric_fn, Q_model, dts, ta
     with torch.no_grad():
         for batch in loader:
             feat, targ, initial_pos, traj_real, map_tensor, map_meta, ts = batch
-            # dts = (ts[:,1:] - ts[:,:-1]).to(DEVICE)
             feat, targ, initial_pos, traj_real, map_tensor = feat.to(DEVICE), targ.to(DEVICE), initial_pos.to(DEVICE), traj_real.to(DEVICE), map_tensor.to(DEVICE)
             pred_traj_fake_rel, _, _, quantiles, imu_feat = generator(map_tensor, initial_pos, Q_model, feat, map_meta, t)
             pred_traj_fake = relative_to_abs(pred_traj_fake_rel, initial_pos, dts, target_type)
 
-            # g_l2_loss_rel = metric_fn['ade'](pred_traj_fake_rel, targ)
 
-            # ade = metric_fn['ade'](pred_traj_fake, traj_real)
             traj_loss = metric_fn['traj_loss'](pred_traj_fake_rel, targ)
             ate = metric_fn['ate'](pred_traj_fake, traj_real)
             fde = metric_fn['fde'](pred_traj_fake, traj_real)
@@ -402,8 +273,6 @@ def check_accuracy(loader, generator, discriminator, metric_fn, Q_model, dts, ta
 
     metrics['d_loss'] = sum(d_losses) / len(d_losses)
     metrics['traj_loss'] = sum(g_traj_loss) / len(loader)
-    # metrics['g_l2_loss_rel'] = sum(g_l2_losses_rel) / total_samples
-    # metrics['ade'] = sum(disp_error) / total_samples
     metrics['fde'] = sum(f_disp_error) / total_samples
     metrics['ds'] = sum(ds_score) / total_samples
     metrics['cr'] = sum(cr_score) / total_samples
@@ -422,44 +291,9 @@ def trainGAN(args, train_loader, val_loader, Q_model, GANtraining_epochs, loss_f
     d_model = d_model.to(DEVICE)
     g_model.train()
     d_model.train()
-    # Define loss function and optimizer
-    # gan_g_loss, gan_d_loss  = loss_fns['GAN_generator_loss'], loss_fns['GAN_discrimentator_loss']
-    # gan_g_feas_loss = loss_fns['GAN_generator_feasibility_loss']
-    # gan_g_aux_loss = loss_fns['GAN_generator_aux_attn_loss']
-    g_optimizer = torch.optim.Adam(g_model.parameters(), lr=3e-4, betas=(0.5, 0.999))
+        g_optimizer = torch.optim.Adam(g_model.parameters(), lr=3e-4, betas=(0.5, 0.999))
     d_optimizer = torch.optim.Adam(d_model.parameters(), lr=1e-4, betas=(0.5, 0.999))
-    # ema = EMA(g_model, decay=0.999)
-    # def lr_curve(step,
-    #          warmup=5_000,
-    #          start=3e-4,            # LR_G initial (your current value)
-    #          end=3e-5,
-    #          total=PHASES["cum_boundaries"][-1]):   # last iter
-    #     if step < warmup:
-    #         return start * step / warmup
-    #     progress = (step - warmup) / max(1, total - warmup)
-    #     return start - progress * (start - end)
-
-    # sched_G = torch.optim.lr_scheduler.LambdaLR(
-    # g_optimizer,
-    # lr_lambda=lambda s: lr_curve(s, start=3e-4, end=3e-5))
-
-    # sched_D = torch.optim.lr_scheduler.LambdaLR(
-    # d_optimizer,
-    # lr_lambda=lambda s: lr_curve(s, start=1e-4, end=1e-5))
-
-    # sched_G = torch.optim.lr_scheduler.LambdaLR(
-    #     g_optimizer, lr_lambda=lambda s: lr_curve(s))
-
-    # sched_D = torch.optim.lr_scheduler.LambdaLR(
-    #     d_optimizer, lr_lambda=lambda s:       # keep 4× ratio
-    #     (lr_curve(s) * 4) / 3e-4)
-
-
-    # lr = 1e-4             # usually same LR for G & D
-    
-    # g_optimizer = torch.optim.Adam(g_model.parameters(), lr=lr, betas=(0.0, 0.9))
-    # d_optimizer = torch.optim.Adam(d_model.parameters(), lr=2.5e-5, betas=(0.0, 0.9))
-    # Training loop
+     # Training loop
     val_loader.dataset.transform = None
     # train_loader.dataset.transform = None
     def phase_transition_actions(t, prev=[-1]):
@@ -480,16 +314,7 @@ def trainGAN(args, train_loader, val_loader, Q_model, GANtraining_epochs, loss_f
             train_loader.dataset.transform = None
         elif phase == 3:                # freeze D, unfreeze LSTM with 0.1× LR
             for p in d_model.parameters():  p.requires_grad = False
-            # for p in Q_model.parameters():  p.requires_grad = True
-            # base_lr = g_optimizer.param_groups[0]['lr']
-            # g_optimizer.add_param_group(dict(params=Q_model.parameters(),
-            #                                  lr=base_lr * 0.1))
-            # for n, p in Q_model.named_parameters():
-            #     if n.startswith(("linear1", "linear2")):  # only heads
-            #         p.requires_grad = True
-            # g_optimizer.add_param_group(
-            # dict(params=(p for p in Q_model.parameters() if p.requires_grad),
-            #  lr=3e-4 * 0.1))
+
             train_loader.dataset.transform = None
 
     iterations_per_epoch = len(train_loader)
@@ -782,9 +607,7 @@ def test_Q_GAN(args):
                 'ds': get_distance_score}
 
 
-    #if args.use_map:
-     #   test_dist_map, boundries =  get_map_data(seq_dataset.gt_pos, args.sigma, args.map_size)
-      #  test_dist_map = test_dist_map.unsqueeze(0).unsqueeze(1).repeat(args.batch_size, 1, 1, 1)
+
 
     fde_outer, ade_outer = [], []
     real, predicted = [], []
@@ -793,10 +616,7 @@ def test_Q_GAN(args):
     with torch.no_grad():
         for idx, data in enumerate(test_data_list):
             assert data == osp.split(seq_dataset.data_path_list[idx])[1]
-            # if args.dataset == 'kaust':
-            #     dts = (seq_dataset.ts[idx][1:] - seq_dataset.ts[idx][:-1])[:, None].mean()/1000
-            # else:
-            #     dts = (seq_dataset.ts[idx][1:] - seq_dataset.ts[idx][:-1])[:, None].mean()
+
 
             dts = (seq_dataset.ts[idx][1:] - seq_dataset.ts[idx][:-1])[:, None].mean()
             gt = seq_dataset.gt_pos[idx]
@@ -822,8 +642,7 @@ def test_Q_GAN(args):
                 pred_traj_fake_rel, _, _, quantiles, imu_feat = g_model(map_tensor, initial_pos, lstm_model, feat, map_meta, 1)
                 pred_traj_fake = relative_to_abs(pred_traj_fake_rel, initial_pos, dts, args.target_type)
                 all_traj.append(pred_traj_fake.squeeze(0).cpu().detach().numpy())
-                # np.save(osp.join(args.output_directory, data + '_' + model_name + str(k) + '.npy'), traj_data)
-                # pred_traj_real = relative_to_abs(targ, initial_pos, dts, args.target_type)
+
                 
                 delta_position = gt_traj_real[:, 1:, :] - gt_traj_real[:, :-1, :]
                 delta_length = torch.norm(delta_position, dim=-1)
@@ -914,29 +733,29 @@ def get_args():
     parser.add_argument('--output_directory', default='results/toy_exp_3/', type=str)
     
     # Model argument
-    parser.add_argument('--context_feature_dim', type=int, default=16, help='Hidden dimension for LSTM/ConvLSTM')
-    parser.add_argument('--imu_hidden_dim', type=int, default=64, help='Hidden dimension for LSTM/ConvLSTM')
-    parser.add_argument('--mlp_dim', type=int, default=128, help='Hidden dimension for LSTM/ConvLSTM')
-    parser.add_argument('--decoder_hidden_dim', type=int, default=64, help='Hidden dimension for LSTM/ConvLSTM')
-    parser.add_argument('--bottleneck_dim', type=int, default=64, help='Hidden dimension for LSTM/ConvLSTM')
-    parser.add_argument('--embedding_dim', type=int, default=32, help='Hidden dimension for LSTM/ConvLSTM')
-    parser.add_argument('--convlstm_layers', type=int, default=1, help='Number of layers in LSTM/ConvLSTM')
-    parser.add_argument('--lstm_layers', type=int, default=2, help='Number of layers in LSTM/ConvLSTM')
-    parser.add_argument('--decoder_layers', type=int, default=1, help='Number of layers in LSTM/ConvLSTM')
-    parser.add_argument('--dropout', type=float, default=0.2, help='Dropout rate for LSTM')
-    parser.add_argument('--latent_dim', type=int, default=32, help='Latent dimension for the decoder in generator')
-    parser.add_argument('--kernel_size', type=int, default=3, help='Kernel size for ConvLSTM in encoder')
-    parser.add_argument('--input_channel', type=int, default=1, help='Kernel size for ConvLSTM in encoder')
-    parser.add_argument('--noise_level', type=float, default=0.5, help='Kernel size for ConvLSTM in encoder')
-    parser.add_argument('--pi', type=float, default=95, help='Kernel size for ConvLSTM in encoder')
-    parser.add_argument('--drop_level', type=float, default=0.1, help='Kernel size for ConvLSTM in encoder')
+    parser.add_argument('--context_feature_dim', type=int, default=16)
+    parser.add_argument('--imu_hidden_dim', type=int, default=64)
+    parser.add_argument('--mlp_dim', type=int, default=128)
+    parser.add_argument('--decoder_hidden_dim', type=int, default=64)
+    parser.add_argument('--bottleneck_dim', type=int, default=64)
+    parser.add_argument('--embedding_dim', type=int, default=32)
+    parser.add_argument('--convlstm_layers', type=int, default=1)
+    parser.add_argument('--lstm_layers', type=int, default=2)
+    parser.add_argument('--decoder_layers', type=int, default=1)
+    parser.add_argument('--dropout', type=float, default=0.2)
+    parser.add_argument('--latent_dim', type=int, default=32)
+    parser.add_argument('--kernel_size', type=int, default=3)
+    parser.add_argument('--input_channel', type=int, default=1)
+    parser.add_argument('--noise_level', type=float, default=0.5)
+    parser.add_argument('--pi', type=float, default=95)
+    parser.add_argument('--drop_level', type=float, default=0.1)
 
     # Data argument
     parser.add_argument('--batch_size', default=16, type=int)
     parser.add_argument('--step_size', default=60, type=int) #
     parser.add_argument('--window_size', default=10*60, type=int) #
     parser.add_argument('--seq_len', default=10*60, type=int) #
-    parser.add_argument('--map_size', type=int, default=256, help='Hidden dimension for LSTM/ConvLSTM')
+    parser.add_argument('--map_size', type=int, default=256)
     parser.add_argument('--sigma', default=2, type=int)
     parser.add_argument('--feat_sigma', default=0.001, type=float)
     parser.add_argument('--targ_sigma', default=0, type=float)
