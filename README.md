@@ -30,7 +30,7 @@ Experiments are conducted using:
 - Ground-truth trajectories from a stereo camera system
 - 2D distance maps generated from the environment
 
-Dataset details will be released upon publication.
+Dataset can be downloaded from [here](https://drive.google.com/drive/folders/1A9i_7SSohpTCmMFWHjpKG1PgXftRM4zI?usp=drive_link).
 
 The Android application and ZED2i code for data collection along with processing codes will be available upon publication.
 ## Pre-trained model
